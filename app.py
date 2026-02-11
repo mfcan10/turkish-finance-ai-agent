@@ -83,7 +83,6 @@ with st.sidebar:
     st.write("---")
     periyot = st.select_slider("Analiz Derinliği", options=["1mo", "3mo", "6mo", "1y", "2y"], value="6mo")
     st.markdown("---")
-    st.info("💡 **Agent İpucu:** Beyaz tema, grafiklerdeki destek/direnç çizgilerini daha net görmenizi sağlar.")
 
 # 5. Sağ Panel
 df = yf.download(secim, period=periyot, interval="1d", auto_adjust=True)
