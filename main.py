@@ -1,28 +1,55 @@
-# 🤖 FINANCE AGENT AI STRATEJİ MOTORU ENTEGRASYONU
-st.markdown("---")
-if st.button("🚀 Finance Agent Stratejisini Al"):
-    with st.spinner("Agent verileri derinlemesine analiz ediyor..."):
-        # 1. Ham Veriyi ve Volatiliteyi Çek (Geliştirilmiş Fonksiyon)
-        df_raw, vol_val = fa.get_stock_data(secim, period=periyot)
+# Finance Agent 
+import logging
+from finance_agent import get_stock_data, advanced_analysis
+from report_generator import generate_report, save_report
+
+# Loglama ayarlarını yapalım (Terminalde ne olup bittiğini görmek için)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("FinanceAgentMain")
+
+def run_agent_workflow(symbol: str):
+    """
+    Belirli bir hisse için tüm analiz ve raporlama sürecini yönetir.
+    """
+    try:
+        logger.info(f"🚀 {symbol} için Finance Agent süreci başlatılıyor...")
         
-        if df_raw is not None:
-            # 2. Gelişmiş Analiz Motorunu Çalıştır
-            # Bu fonksiyon artık sadece fiyat değil, RSI ve Trendi de analiz ediyor
-            analysis_results = fa.advanced_analysis(df_raw, vol_val)
-            
-            # 3. Profesyonel Raporu Oluştur (Markdown formatında)
-            report_text = rg.generate_report(secim, analysis_results)
-            
-            # 4. Ekranda Midas Stili Kart İçinde Göster
-            st.markdown("### 🕵️ Agent Strateji Raporu")
-            st.markdown(f'<div class="agent-card">{report_text}</div>', unsafe_allow_html=True)
-            
-            # 5. Opsiyonel: Raporu TXT/MD Olarak İndir
-            st.download_button(
-                label="📄 Raporu Dosya Olarak Kaydet",
-                data=report_text,
-                file_name=f"FinanceAgent_{secim}.md",
-                mime="text/markdown"
-            )
-        else:
-            st.error("Agent veri çekme aşamasında bir sorunla karşılaştı.")
+        # 1. Veri Çekme (Beyin - Adım 1)
+        # finance_agent.py içindeki yeni fonksiyonu kullanıyoruz
+        df, vol = get_stock_data(symbol, period="1y") 
+        
+        if df is None:
+            logger.error(f"❌ {symbol} verisi alınamadığı için süreç durduruldu.")
+            return
+
+        # 2. Gelişmiş Analiz (Beyin - Adım 2)
+        # Sadece fiyat değil, RSI ve Trend analizi yapılır
+        analysis = advanced_analysis(df, vol)
+        logger.info(f"📊 Analiz tamamlandı. Karar: {analysis['decision']}")
+
+        # 3. Rapor Oluşturma (Fabrika - Adım 3)
+        # report_generator.py içindeki Midas tarzı raporu hazırlar
+        report_md = generate_report(symbol, analysis)
+        
+        # 4. Raporu Kaydetme (Çıktı - Adım 4)
+        saved_file = save_report(report_md, symbol)
+        
+        if saved_file:
+            logger.info(f"✅ İşlem başarılı! Rapor oluşturuldu: {saved_file}")
+            print("-" * 30)
+            print(f"Finance Agent Özeti ({symbol}):")
+            print(f"Fiyat: {analysis['last_price']:.2f}")
+            print(f"Sinyal: {analysis['decision']}")
+            print(f"Risk: {analysis['risk_level']}")
+            print("-" * 30)
+
+    except Exception as e:
+        logger.error(f"⚠️ Kritik sistem hatası: {e}")
+
+if __name__ == "__main__":
+  
+    test_list = ["THYAO.IS", "BTC-USD"]
+    
+    print("🤖 FINANCE AGENT - OTONOM ANALİZ SİSTEMİ")
+    for asset in test_list:
+        run_agent_workflow(asset)
