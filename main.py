@@ -16,7 +16,7 @@ def run_agent_workflow(symbol: str):
         
         # 1. Veri Çekme (Beyin - Adım 1)
         # finance_agent.py içindeki yeni fonksiyonu kullanıyoruz
-        df, vol = get_stock_data(symbol, period="1y") 
+        df, vol, is_demo = get_stock_data(symbol, period="1y", allow_demo_fallback=True) 
         
         if df is None:
             logger.error(f"❌ {symbol} verisi alınamadığı için süreç durduruldu.")
@@ -25,6 +25,8 @@ def run_agent_workflow(symbol: str):
         # 2. Gelişmiş Analiz (Beyin - Adım 2)
         # Sadece fiyat değil, RSI ve Trend analizi yapılır
         analysis = advanced_analysis(df, vol)
+        if is_demo:
+            logger.warning("⚠️ %s için demo veri ile analiz üretildi.", symbol)
         logger.info(f"📊 Analiz tamamlandı. Karar: {analysis['decision']}")
 
         # 3. Rapor Oluşturma (Fabrika - Adım 3)

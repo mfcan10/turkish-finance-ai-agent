@@ -1,151 +1,179 @@
-import streamlit as st
-import yfinance as yf
-import pandas as pd
-import plotly.graph_objects as go
-import numpy as np
 from datetime import datetime
 
-# 1. Sayfa Ayarları
-st.set_page_config(page_title="Finance Agent | Light Terminal", layout="wide", page_icon="🤖")
+import plotly.graph_objects as go
+import streamlit as st
 
-# 2. Midas White CSS - Temiz ve Aydınlık Arayüz
-st.markdown("""
+from finance_agent import advanced_analysis, get_stock_data
+from report_generator import generate_report
+
+st.set_page_config(page_title="Finance Agent | Midas Tarzı", layout="wide", page_icon="📈")
+
+st.markdown(
+    """
     <style>
-    /* Ana Arka Plan ve Yazı Rengi */
-    .stApp { background-color: #ffffff; color: #1e293b; }
-    
-    /* Sidebar Düzenlemesi */
-    [data-testid="stSidebar"] { 
-        background-color: #f8fafc; 
-        border-right: 1px solid #e2e8f0; 
+    .stApp { background: #f8fafc; color: #0f172a; }
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+        border-right: 1px solid rgba(148, 163, 184, 0.25);
     }
-    
-    /* Midas Stili Kartlar */
-    .agent-card {
-        background: #ffffff; 
-        border-radius: 16px; 
-        padding: 25px;
-        border: 1px solid #e2e8f0; 
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-        margin-bottom: 20px;
+    [data-testid="stSidebar"] * { color: #e2e8f0 !important; }
+    .card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 18px;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
     }
-    
-    /* Başlıklar ve Etiketler */
-    .recommendation-label { font-size: 13px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-    .rec-buy { color: #00d3ad; font-size: 34px; font-weight: 800; }
-    .rec-sell { color: #ff4b50; font-size: 34px; font-weight: 800; }
-    .rec-hold { color: #f59e0b; font-size: 34px; font-weight: 800; }
-    
-    /* Risk Kutuları (Aydınlık Tema) */
-    .risk-alert { 
-        padding: 15px; border-radius: 12px; background: #fff1f2; 
-        border-left: 5px solid #ff4b50; color: #991b1b; margin-top: 10px;
-    }
-    .risk-safe { 
-        padding: 15px; border-radius: 12px; background: #f0fdf4; 
-        border-left: 5px solid #00d3ad; color: #166534; margin-top: 10px;
-    }
-    
-    /* Plotly Grafik Alanını Temizleme */
-    .js-plotly-plot { border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; }
+    .metric-title { font-size: 12px; color: #64748b; margin-bottom: 6px; }
+    .metric-value { font-size: 26px; font-weight: 800; color: #0f172a; }
+    .buy { color:#10b981; font-weight:800; }
+    .sell { color:#ef4444; font-weight:800; }
+    .hold { color:#f59e0b; font-weight:800; }
     </style>
-    """, unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True,
+)
 
-# 3. Analiz Motoru
-def get_analysis(df):
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs)).iloc[-1]
-    vol = df['Close'].pct_change().std() * np.sqrt(252) * 100
-    current_price = df['Close'].iloc[-1]
-    sma_50 = df['Close'].rolling(window=50).mean().iloc[-1]
-    
-    if rsi < 30:
-        return "GÜÇLÜ AL", "Fiyat aşırı satım bölgesinde. Teknik dip oluşumu tamamlanmak üzere.", "Düşük/Orta", vol
-    elif rsi > 70:
-        return "GÜÇLÜ SAT", "Fiyat doyum noktasında. Kar realizasyonu için uygun seviyeler.", "Yüksek", vol
-    elif current_price > sma_50:
-        return "TUT / EKLE", "Yükseliş trendi sağlıklı şekilde devam ediyor.", "Orta", vol
-    else:
-        return "İZLE / BEKLE", "Piyasa kararsız. Net bir kırılım beklemek daha güvenli.", "Orta/Yüksek", vol
 
-# 4. Sol Menü
+def _signal_class(signal: str) -> str:
+    if "AL" in signal:
+        return "buy"
+    if "SAT" in signal or "ZAYIF" in signal:
+        return "sell"
+    return "hold"
+
+
+@st.cache_data(ttl=300)
+def load_market_data(symbol: str, period: str, demo_fallback: bool):
+    return get_stock_data(symbol=symbol, period=period, allow_demo_fallback=demo_fallback)
+
+
 with st.sidebar:
-    st.markdown("<h2 style='color:#00d3ad; margin-bottom:0;'>🤖 Finance Agent</h2>", unsafe_allow_html=True)
-    st.caption("Veri Odaklı Karar Destek Sistemi")
-    st.write("---")
-    
-    hisse_list = ["THYAO.IS", "ASELS.IS", "EREGL.IS", "BIMAS.IS", "SISE.IS", "KCHOL.IS", "BTC-USD"]
-    secim = st.selectbox("İzleme Listeniz", hisse_list)
-    
-    st.write("---")
-    periyot = st.select_slider("Analiz Derinliği", options=["1mo", "3mo", "6mo", "1y", "2y"], value="6mo")
-    st.markdown("---")
+    st.markdown("## 🤖 Finance Agent")
+    st.caption("Sade + güçlü Midas tarzı terminal")
 
-# 5. Sağ Panel
-df = yf.download(secim, period=periyot, interval="1d", auto_adjust=True)
+    symbols = ["THYAO.IS", "ASELS.IS", "EREGL.IS", "BIMAS.IS", "SISE.IS", "KCHOL.IS", "BTC-USD"]
+    symbol = st.selectbox("Varlık", symbols)
+    period = st.select_slider("Analiz Periyodu", ["1mo", "3mo", "6mo", "1y", "2y"], value="1y")
+    use_demo_fallback = st.toggle("Bağlantı sorunu olursa demo veriye geç", value=True)
 
-if not df.empty:
-    if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
-    
-    karar, yorum, risk_lvl, vol_val = get_analysis(df)
-    fiyat = df['Close'].iloc[-1]
-    degisim = ((fiyat / df['Close'].iloc[-2]) - 1) * 100
+    col_a, col_b = st.columns(2)
+    with col_a:
+        refresh_clicked = st.button("🔄 Yenile", use_container_width=True)
+    with col_b:
+        clear_clicked = st.button("🧹 Cache Temizle", use_container_width=True)
 
-    # Header
-    c1, c2 = st.columns([3, 1])
-    with c1:
-        st.markdown(f"### {secim} Teknik Terminal")
-        st.caption(f"Son Güncelleme: {datetime.now().strftime('%H:%M:%S')}")
-    with c2:
-        color = "#00d3ad" if degisim >= 0 else "#ff4b50"
-        st.markdown(f"<div style='text-align:right'><span style='font-size:32px; font-weight:bold; color:#1e293b;'>{fiyat:,.2f}</span><br><span style='color:{color}; font-weight:600;'>%{degisim:.2f}</span></div>", unsafe_allow_html=True)
+    if clear_clicked:
+        st.cache_data.clear()
+        st.success("Cache temizlendi")
 
-    # GRAFİK (Aydınlık Tema Uyumlu)
-    fig = go.Figure()
-    fig.add_trace(go.Candlestick(
-        x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
-        increasing_line_color='#00d3ad', decreasing_line_color='#ff4b50',
-        name="Fiyat"
-    ))
-    fig.update_layout(
-        template="plotly_white", # Beyaz tema şablonu
-        height=500, 
-        margin=dict(l=0,r=0,t=10,b=0),
-        xaxis_rangeslider_visible=False,
-        paper_bgcolor='white',
-        plot_bgcolor='#fcfcfc'
+if refresh_clicked:
+    load_market_data.clear()
+
+
+df, volatility, is_demo = load_market_data(symbol, period, use_demo_fallback)
+
+if df is None or df.empty:
+    st.error("Veri alınamadı. Demo fallback kapalıysa açıp tekrar deneyin.")
+    st.stop()
+
+analysis = advanced_analysis(df, volatility)
+last_price = float(df["Close"].iloc[-1])
+prev_price = float(df["Close"].iloc[-2]) if len(df) > 1 else last_price
+change_daily = ((last_price - prev_price) / prev_price * 100) if prev_price else 0.0
+
+h1, h2 = st.columns([3, 1])
+with h1:
+    st.markdown(
+        f"""
+        <div class='card'>
+            <h2 style='margin:0'>{symbol} Teknik Panel</h2>
+            <div style='color:#64748b;margin-top:6px'>Güncelleme: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}</div>
+            <div style='margin-top:6px;color:{'#f59e0b' if is_demo else '#64748b'}'>
+            {'⚠️ Demo veri modu aktif (internet/proxy engeli nedeniyle).' if is_demo else 'Canlı veri kullanılıyor.'}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    st.plotly_chart(fig, use_container_width=True)
+with h2:
+    color = "#10b981" if change_daily >= 0 else "#ef4444"
+    st.markdown(
+        f"""
+        <div class='card' style='text-align:right'>
+            <div style='font-size:34px;font-weight:800'>{last_price:,.2f}</div>
+            <div style='font-size:16px;font-weight:700;color:{color}'>%{change_daily:.2f}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    # FINANCE AGENT ANALİZ ALANI
-    st.markdown("---")
-    st.markdown("#### 🕵️ Agent Strateji Raporu")
-    
-    col_l, col_r = st.columns(2)
-    
-    with col_l:
-        st.markdown(f'''
-            <div class="agent-card">
-                <p class="recommendation-label">Önerilen Strateji</p>
-                <p class="{"rec-buy" if "AL" in karar else "rec-sell" if "SAT" in karar else "rec-hold"}">{karar}</p>
-                <p style="color:#475569; line-height:1.6;">{yorum}</p>
-            </div>
-        ''', unsafe_allow_html=True)
+tab_overview, tab_strategy, tab_report = st.tabs(["📊 Piyasa", "🧠 Strateji", "📝 Rapor"])
 
-    with col_r:
-        st.markdown(f'''
-            <div class="agent-card">
-                <p class="recommendation-label">Risk ve Oynaklık</p>
-                <p style="font-size:18px; font-weight:600; margin-top:10px;">Volatilite: %{vol_val:.2f}</p>
-                <p style="font-size:16px; color:#475569;">Risk Puanı: <b>{risk_lvl}</b></p>
-                <div class="{"risk-alert" if vol_val > 35 else "risk-safe"}">
-                    {"<b>DİKKAT:</b> Sert hareket beklentisi. Portföy dağılımına dikkat edilmeli." if vol_val > 35 else "<b>STABİL:</b> Yatay/Düşük oynaklık. Güvenli bölge."}
-                </div>
-            </div>
-        ''', unsafe_allow_html=True)
+with tab_overview:
+    fig = go.Figure()
+    fig.add_trace(
+        go.Candlestick(
+            x=df.index,
+            open=df["Open"],
+            high=df["High"],
+            low=df["Low"],
+            close=df["Close"],
+            increasing_line_color="#10b981",
+            decreasing_line_color="#ef4444",
+            name="Fiyat",
+        )
+    )
+    fig.add_trace(go.Scatter(x=df.index, y=df["SMA20"], mode="lines", line=dict(color="#3b82f6", width=1.5), name="SMA20"))
+    fig.add_trace(go.Scatter(x=df.index, y=df["SMA50"], mode="lines", line=dict(color="#8b5cf6", width=1.5), name="SMA50"))
+    fig.add_trace(go.Scatter(x=df.index, y=df["BB_UPPER"], mode="lines", line=dict(color="#94a3b8", width=1, dash="dot"), name="BB Üst"))
+    fig.add_trace(go.Scatter(x=df.index, y=df["BB_LOWER"], mode="lines", line=dict(color="#94a3b8", width=1, dash="dot"), name="BB Alt"))
+    fig.update_layout(template="plotly_white", height=520, xaxis_rangeslider_visible=False, margin=dict(l=0, r=0, t=8, b=0))
+    st.plotly_chart(fig, width="stretch")
 
-else:
-    st.error("Veri alınamadı, lütfen tekrar deneyin.")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.markdown(f"<div class='card'><div class='metric-title'>RSI</div><div class='metric-value'>{analysis['rsi']:.2f}</div></div>", unsafe_allow_html=True)
+    c2.markdown(f"<div class='card'><div class='metric-title'>Yıllık Volatilite</div><div class='metric-value'>%{analysis['volatility']:.2f}</div></div>", unsafe_allow_html=True)
+    c3.markdown(f"<div class='card'><div class='metric-title'>Trend Gücü</div><div class='metric-value' style='font-size:22px'>{analysis['trend_strength']}</div></div>", unsafe_allow_html=True)
+    c4.markdown(f"<div class='card'><div class='metric-title'>Güven Skoru</div><div class='metric-value'>%{analysis['confidence']:.0f}</div></div>", unsafe_allow_html=True)
+
+with tab_strategy:
+    st.markdown(
+        f"""
+        <div class='card'>
+            <div class='metric-title'>Model Kararı</div>
+            <div class='{_signal_class(analysis['decision'])}' style='font-size:30px'>{analysis['decision']}</div>
+            <p style='color:#334155; margin-top:8px'>{analysis['comment']}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    rc1, rc2 = st.columns(2)
+    with rc1:
+        st.info(f"Risk Seviyesi: **{analysis['risk_level']}**")
+    with rc2:
+        st.info(f"Dönemsel Değişim: **%{analysis['change_pct']:.2f}**")
+
+with tab_report:
+    report_md = generate_report(symbol, analysis)
+    st.markdown(report_md)
+
+    d1, d2 = st.columns(2)
+    with d1:
+        st.download_button(
+            "📥 Markdown Raporu İndir",
+            data=report_md,
+            file_name=f"{symbol}_strateji_raporu.md",
+            mime="text/markdown",
+            width="stretch",
+        )
+    with d2:
+        csv_bytes = df.tail(120).to_csv(index=True).encode("utf-8")
+        st.download_button(
+            "📥 Son 120 Gün Verisini İndir (CSV)",
+            data=csv_bytes,
+            file_name=f"{symbol}_son120.csv",
+            mime="text/csv",
+            width="stretch",
+        )
