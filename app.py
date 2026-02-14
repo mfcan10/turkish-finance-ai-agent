@@ -6,7 +6,7 @@ import streamlit as st
 from finance_agent import advanced_analysis, get_stock_data
 from report_generator import generate_report
 
-st.set_page_config(page_title="Finance Agent | Midas Tarzı", layout="wide", page_icon="📈")
+st.set_page_config(page_title="Finance Agent | ", layout="wide", page_icon="📈")
 
 st.markdown(
     """
@@ -50,7 +50,7 @@ def load_market_data(symbol: str, period: str, demo_fallback: bool):
 
 with st.sidebar:
     st.markdown("## 🤖 Finance Agent")
-    st.caption("Sade + güçlü Midas tarzı terminal")
+    st.caption("Terminal")
 
     symbols = ["THYAO.IS", "ASELS.IS", "EREGL.IS", "BIMAS.IS", "SISE.IS", "KCHOL.IS", "BTC-USD"]
     symbol = st.selectbox("Varlık", symbols)
